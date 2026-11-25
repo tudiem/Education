@@ -10,6 +10,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from . import export as exp
 from . import render
 from .assets import AssetStore
 from .db import Question, Topic, open_db
@@ -17,21 +18,11 @@ from .importer import AlreadyImported, import_docx
 from .mathtype import TOOLS_DIR
 from .package import DocxError
 
-PAGE = """<!doctype html><html lang="vi"><meta charset="utf-8"><title>Xem trước kho bài tập</title>
-<link rel="stylesheet" href="katex/katex.min.css">
-<style>
-body{font:16px/1.6 "Times New Roman",serif;max-width:900px;margin:24px auto;padding:0 16px;color:#111}
-.q{border:1px solid #ccc;border-radius:6px;padding:10px 14px;margin:12px 0}
-.q.needs_review{border-color:#d33;background:#fff6f6}
-.hd{font:12px sans-serif;color:#555;margin-bottom:4px}.hd b{color:#06c}
-.opts{list-style:none;padding:0;display:flex;gap:28px;flex-wrap:wrap}.opts li{min-width:120px}
-img.pic{display:block;margin:6px 0}img.pic.float{float:right;margin:0 0 8px 16px;max-width:45%}.q:after{content:'';display:block;clear:both}img.fallback{height:1.4em;vertical-align:middle}
-span.review{background:#fdd}p{margin:4px 0}table{border-collapse:collapse}td{padding:2px 12px}
-</style><body>
-@@BODY@@
-<script src="katex/katex.min.js"></script>
-<script>document.querySelectorAll('span.math').forEach(function(e){try{katex.render(e.dataset.latex,e,{throwOnError:false})}catch(x){e.textContent=e.dataset.latex}})</script>
-</body></html>"""
+PREVIEW_CSS = (
+    ".q{border:1px solid #ccc;border-radius:6px;padding:10px 14px;margin:12px 0}"
+    ".q.needs_review{border-color:#d33;background:#fff6f6}.q:after{content:'';display:block;clear:both}"
+    "body{max-width:900px;margin:24px auto;padding:0 16px}"
+)
 
 
 def _env(args):
@@ -112,8 +103,40 @@ def cmd_preview(args) -> int:
             )
     for sha in used:
         shutil.copyfile(store.path(sha), out / "assets" / sha)
-    (out / "index.html").write_text(PAGE.replace("@@BODY@@", "\n".join(parts)), encoding="utf-8")
+    (out / "index.html").write_text(
+        render.page_html("\n".join(parts), title="Xem trước kho bài tập", extra_css=PREVIEW_CSS), encoding="utf-8"
+    )
     print(f"Đã tạo {out / 'index.html'} ({len(parts)} câu)")
+    return 0
+
+
+def cmd_export(args) -> int:
+    Session, store = _env(args)
+    try:
+        codes = exp.parse_codes(args.codes) if args.codes else None
+        if not (codes or args.exam or args.topic):
+            raise exp.ExportError("Cần chọn câu hỏi: --codes, --exam hoặc --topic")
+        out = Path(args.out)
+        fmts = ["docx", "pdf"] if args.format == "both" else [args.format]
+        with Session() as s:
+            qs = exp.select_questions(s, codes=codes, exam=args.exam, topic=args.topic)
+            title = args.title if args.title is not None else args.exam
+            print(f"Chọn {len(qs)} câu: {qs[0].code}…{qs[-1].code}")
+            results = []
+            if "docx" in fmts:
+                tpl, w = exp.template_for(s, store, qs)
+                r = exp.export_docx(qs, tpl, store, out / f"{args.name}.docx", title, args.paper)
+                r.warnings = w + r.warnings
+                results.append(r)
+            if "pdf" in fmts:
+                results.append(exp.export_pdf(qs, s, store, out / f"{args.name}.pdf", title, args.pdf_engine, args.paper))
+    except exp.ExportError as e:
+        print(f"Lỗi: {e}", file=sys.stderr)
+        return 1
+    for r in results:
+        print(f"  → {r.path} ({r.path.stat().st_size // 1024} KB)")
+        for w in r.warnings:
+            print(f"    ! {w}")
     return 0
 
 
@@ -137,6 +160,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", default="preview")
     p.add_argument("--exam", help='lọc theo đề, vd. "ĐỀ SỐ 1"')
     p.set_defaults(fn=cmd_preview)
+    p = sub.add_parser("export", help="xuất câu hỏi ra .docx / PDF")
+    p.add_argument("--codes", help="mã hoặc khoảng, vd. C0000001,C0000005-C0000010 (giữ đúng thứ tự)")
+    p.add_argument("--exam", help='lấy cả đề, vd. "ĐỀ SỐ 1"')
+    p.add_argument("--topic", help="lấy cả chủ đề")
+    p.add_argument("--title", help="tiêu đề đầu đề (mặc định: tên đề nếu có --exam)")
+    p.add_argument("--format", choices=["docx", "pdf", "both"], default="both")
+    p.add_argument("--pdf-engine", choices=["auto", "chrome", "libreoffice"], default="auto")
+    p.add_argument("--paper", choices=["a4", "source"], default="a4", help="khổ giấy: A4 (mặc định) hoặc giữ như file nguồn")
+    p.add_argument("--out", default="export")
+    p.add_argument("--name", default="de-thi", help="tên file (không đuôi)")
+    p.set_defaults(fn=cmd_export)
     args = ap.parse_args(argv)
     return args.fn(args)
 

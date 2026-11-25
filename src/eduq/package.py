@@ -29,7 +29,8 @@ def q(prefix: str, name: str) -> str:
 
 
 # Chống XXE / tải tài nguyên ngoài khi đọc file người dùng upload.
-_PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
+PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
+_PARSER = PARSER
 
 MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024
 

@@ -111,6 +111,9 @@ def import_docx(
         s.add(sf)
         s.flush()
 
+        store.put(file_sha, raw)  # giữ file nguồn: khuôn style/đánh số khi xuất .docx
+        if s.get(Asset, file_sha) is None:
+            s.add(Asset(sha256=file_sha, kind="source", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", size=len(raw), name=path.name))
         for sha, blob in doc.assets.items():
             store.put(sha, blob.data)
             if s.get(Asset, sha) is None:

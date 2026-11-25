@@ -44,8 +44,12 @@ def _block(b: dict, asset_url) -> str:
     return ""
 
 
-def question_html(content: dict, asset_url) -> str:
+def question_html(content: dict, asset_url, label: str | None = None) -> str:
+    """HTML một câu. `label` (vd. "Câu 3:") được chèn đầu đoạn đầu tiên."""
     out = "".join(_block(b, asset_url) for b in content["stem"])
+    if label:
+        tag = f'<span class="no">{escape(label)}</span> '
+        out = out.replace("<p>", "<p>" + tag, 1) if out.startswith("<p>") else f"<p>{tag}</p>" + out
     if content.get("options"):
         out += '<ol class="opts">' + "".join(
             f'<li><b>{o["label"]}.</b> ' + "".join(_inline(n, asset_url) for n in o["inlines"]) + "</li>"
@@ -53,3 +57,28 @@ def question_html(content: dict, asset_url) -> str:
         ) + "</ol>"
         out += "".join(_block(b, asset_url) for b in content.get("after", []))
     return out
+
+
+PAGE_CSS = """
+body{font:16px/1.6 "Times New Roman","Liberation Serif",serif;color:#111}
+.hd{font:12px sans-serif;color:#555;margin-bottom:4px}.hd b{color:#06c}
+.opts{list-style:none;padding:0;display:flex;gap:28px;flex-wrap:wrap}.opts li{min-width:120px}
+img.pic{display:block;margin:6px 0}img.pic.float{float:right;margin:0 0 8px 16px;max-width:45%}
+img.fallback{height:1.4em;vertical-align:middle}
+span.review{background:#fdd}span.no{font-weight:bold;color:#0070c0}
+p{margin:4px 0}table{border-collapse:collapse}td{padding:2px 12px}
+"""
+
+KATEX_RENDER_JS = (
+    "document.querySelectorAll('span.math').forEach(function(e){"
+    "try{katex.render(e.dataset.latex,e,{throwOnError:false})}catch(x){e.textContent=e.dataset.latex}})"
+)
+
+
+def page_html(body: str, *, title: str = "Kho bài tập", extra_css: str = "") -> str:
+    """Trang HTML hoàn chỉnh; cần thư mục `katex/` (css + js + fonts) nằm cạnh file."""
+    return (
+        f'<!doctype html><html lang="vi"><meta charset="utf-8"><title>{escape(title)}</title>'
+        f'<link rel="stylesheet" href="katex/katex.min.css"><style>{PAGE_CSS}{extra_css}</style><body>'
+        f'{body}<script src="katex/katex.min.js"></script><script>{KATEX_RENDER_JS}</script></body></html>'
+    )
