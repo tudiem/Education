@@ -35,7 +35,7 @@ def cmd_import(args) -> int:
     Session, store = _env(args)
     try:
         r = import_docx(args.file, args.topic, Session, store, use_mathml=not args.no_mathml)
-    except (DocxError, AlreadyImported) as e:
+    except (DocxError, AlreadyImported, OSError) as e:
         print(f"Lỗi: {e}", file=sys.stderr)
         return 1
     print(f"Đã nhập {r.questions} câu ({r.codes[0]}…{r.codes[-1]}) vào chủ đề “{r.topic}”")

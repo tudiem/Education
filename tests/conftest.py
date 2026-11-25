@@ -43,12 +43,14 @@ def p_split(*runs: str) -> str:
     return "<w:p>" + "".join(f'<w:r><w:t xml:space="preserve">{r}</w:t></w:r>' for r in runs) + "</w:p>"
 
 
-def p_image(text: str, rid: str, *, num_id: str | None = None) -> str:
+def p_image(text: str, rid: str, *, num_id: str | None = None, floating: bool = False, crop_top: int = 0) -> str:
     ppr = f'<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="{num_id}"/></w:numPr></w:pPr>' if num_id else ""
+    kind = "anchor" if floating else "inline"
+    src = f'<a:srcRect t="{crop_top}"/>' if crop_top else ""
     drawing = (
-        '<w:r><w:drawing><wp:inline><wp:extent cx="952500" cy="952500"/><wp:docPr id="1" name="Hinh"/>'
+        f'<w:r><w:drawing><wp:{kind}><wp:extent cx="952500" cy="952500"/><wp:docPr id="1" name="Hinh"/>'
         '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
-        f'<pic:pic><pic:blipFill><a:blip r:embed="{rid}"/></pic:blipFill></pic:pic></a:graphicData></a:graphic>'
-        "</wp:inline></w:drawing></w:r>"
+        f'<pic:pic><pic:blipFill><a:blip r:embed="{rid}"/>{src}</pic:blipFill></pic:pic></a:graphicData></a:graphic>'
+        f"</wp:{kind}></w:drawing></w:r>"
     )
     return f'<w:p>{ppr}<w:r><w:t>{text}</w:t></w:r>{drawing}</w:p>'

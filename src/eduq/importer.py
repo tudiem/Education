@@ -135,6 +135,7 @@ def import_docx(
                 f"{n['type']}:{','.join(n.get('notes', [])) or n.get('what') or n.get('progid') or 'review'}"
                 for n in flagged
             ]
+            issues += pq.issues
             chash = hashlib.sha256(
                 json.dumps(pq.content, sort_keys=True, ensure_ascii=False).encode()
             ).hexdigest()
@@ -161,7 +162,7 @@ def import_docx(
             q = Question(
                 topic_id=topic.id, source_file_id=sf.id, exam=pq.exam, section=pq.section, number=pq.number,
                 qtype=pq.qtype, points=pq.points, content=pq.content, raw_ooxml=pq.raw_ooxml, raw_rels=rels,
-                status="needs_review" if flagged else "ok", issues=issues, content_hash=chash,
+                status="needs_review" if (flagged or pq.issues) else "ok", issues=issues, content_hash=chash,
                 duplicate_of=seen.get(chash),
             )
             s.add(q)
@@ -173,7 +174,7 @@ def import_docx(
             report.multiple_choice += pq.qtype == "multiple_choice"
             report.free_response += pq.qtype == "free_response"
             report.duplicates += q.duplicate_of is not None
-            report.questions_needs_review += bool(flagged)
+            report.questions_needs_review += bool(flagged or pq.issues)
             report.formulas_needs_review += sum(1 for n in math if n.get("status") == "needs_review")
             if pq.exam and pq.exam not in exams:
                 exams.append(pq.exam)

@@ -204,6 +204,6 @@ def test_real_sample_export_all_roundtrip(env):
     assert res.warnings == [] and exp.check_docx(out) == []
     Session2 = open_db(f"sqlite:///{tmp}/rt.db")
     r = import_docx(out, "rt", Session2, AssetStore(tmp / "a2"))
-    assert (r.questions, r.formulas_total, r.images, r.questions_needs_review) == (80, 397, 10, 0)
+    assert (r.questions, r.formulas_total, r.images, r.questions_needs_review) == (80, 397, 10, 0)  # file xuất: hình đã đúng câu
     with Session2() as b:
         assert [x.content_hash for x in b.scalars(select(Question).order_by(Question.id))] == orig

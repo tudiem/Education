@@ -45,6 +45,12 @@ Câu hỏi = đoạn đánh số tự động (vd. "Câu 1:") hoặc bắt đầ
 "I. …/II. …" là phần. Dòng "A. … B. … C. … D. …" (một hoặc nhiều dòng) được tách thành phương án.
 Watermark/đầu trang không được lưu theo bài.
 
+## Hình minh họa
+- Hình nổi (kéo thả trong Word) hay bị neo vào câu liền trước. Nếu câu chứa hình **không** nói về hình học mà câu kế tiếp
+  (cùng đề, cùng phần) **có** (đường thẳng, góc, tam giác, hình vẽ…), hình được chuyển sang câu kế tiếp và câu đó bị
+  gắn cờ `needs_review` (`figure_moved_from_previous_question`) để bạn kiểm tra. Đây là suy đoán theo từ khóa tiếng Việt.
+- Vùng crop của Word (`a:srcRect`) được giữ khi hiển thị web/PDF; file .docx xuất ra giữ nguyên crop gốc.
+
 ## Giới hạn đã biết
 - Chưa kiểm tra bằng Microsoft Word thật (đã kiểm bằng LibreOffice, python-docx và `check_docx`); nếu Word báo file lỗi, gửi lại file để xử lý.
 - Dữ liệu nhập bằng bản cũ (trước khi có xuất) chưa lưu file nguồn → xuất .docx dùng style mặc định; nhập lại để dùng style nguồn.

@@ -28,6 +28,15 @@ def _inline(n: dict, asset_url) -> str:
         w = n.get("width_emu")
         size = f' style="width:{w // EMU_PER_PX}px;max-width:100%"' if w else ""
         cls = "pic float" if n.get("floating") else "pic"
+        crop, h = n.get("crop"), n.get("height_emu")
+        if crop and w and h:  # Word cắt bớt ảnh: dựng khung đúng cỡ hiển thị, ảnh đầy đủ lệch trong khung
+            l, t, r, b = (crop.get(k, 0) / 100000 for k in "ltrb")
+            fw, fh = w / EMU_PER_PX / (1 - l - r), h / EMU_PER_PX / (1 - t - b)
+            return (
+                f'<span class="{cls} crop" style="width:{w / EMU_PER_PX:.0f}px;height:{h / EMU_PER_PX:.0f}px">'
+                f'<img src="{asset_url(n["asset"])}" style="width:{fw:.1f}px;height:{fh:.1f}px;left:{-l * fw:.1f}px;top:{-t * fh:.1f}px" '
+                f'alt="{escape(n.get("alt", ""))}"></span>'
+            )
         return f'<img class="{cls}" src="{asset_url(n["asset"])}"{size} alt="{escape(n.get("alt", ""))}">'
     return '<span class="review">[nội dung chưa hỗ trợ]</span>'
 
@@ -65,6 +74,8 @@ body{font:16px/1.6 "Times New Roman","Liberation Serif",serif;color:#111}
 .opts{list-style:none;padding:0;display:flex;gap:28px;flex-wrap:wrap}.opts li{min-width:120px}
 img.pic{display:block;margin:6px 0}img.pic.float{float:right;margin:0 0 8px 16px;max-width:45%}
 img.fallback{height:1.4em;vertical-align:middle}
+span.pic.crop{display:block;position:relative;overflow:hidden;margin:6px 0;max-width:100%}
+span.pic.crop img{position:absolute;max-width:none;margin:0}span.pic.float{float:right;margin:0 0 8px 16px}
 span.review{background:#fdd}span.no{font-weight:bold;color:#0070c0}
 p{margin:4px 0}table{border-collapse:collapse}td{padding:2px 12px}
 """

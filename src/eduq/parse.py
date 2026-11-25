@@ -23,6 +23,12 @@ QUESTION_LABEL_RE = re.compile(r"^\s*(?:câu|bài)\s*\d+\s*[.:)]\s*", re.I)
 POINTS_RE = re.compile(r"\((\d+(?:[.,]\d+)?)\s*điểm\)", re.I)
 OPTION_RE = re.compile(r"(?:(?<=\s)|^)([A-D])\.(?=\s|$)")
 
+GEOM_RE = re.compile(
+    r"đường thẳng|góc|tam giác|hình vẽ|\btia\b|đỉnh|song song|vuông góc|đoạn thẳng|hình (?:thang|bình hành|chữ nhật|vuông|thoi)",
+    re.I,
+)
+MOVED_FIGURE = "figure_moved_from_previous_question"
+
 MIME = {
     "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif",
     "bmp": "image/bmp", "wmf": "image/x-wmf", "emf": "image/x-emf", "svg": "image/svg+xml",
@@ -176,6 +182,11 @@ def _drawing_node(drw, ctx: _Ctx) -> dict:
     if docpr is not None and docpr.get("descr"):
         node["alt"] = docpr.get("descr")
     node["floating"] = drw.find(q("wp", "anchor")) is not None
+    src = blip.getparent().find(q("a", "srcRect")) if blip.getparent() is not None else None
+    if src is not None:  # Word cắt bớt ảnh (đơn vị 1/1000 %): phải giữ để hiển thị giống Word
+        crop = {k: int(src.get(k)) for k in "ltrb" if src.get(k) and int(src.get(k)) != 0}
+        if crop:
+            node["crop"] = crop
     return node
 
 
@@ -330,6 +341,39 @@ def _build_content(blocks: list[dict]) -> tuple[dict, str]:
     return {"stem": blocks, "options": None}, "free_response"
 
 
+def _text_of(els) -> str:
+    return " ".join(para_text(e) for e in els if _local(e) == "p")
+
+
+def _relocate_figures(groups: list[dict]) -> None:
+    """Hình nổi bị neo nhầm vào câu liền trước (thường do giáo viên kéo thả) → chuyển sang câu hình học kế tiếp.
+
+    Chỉ chuyển khi câu hiện tại KHÔNG nói về hình học, câu kế tiếp (cùng đề, cùng phần) CÓ. Câu được gắn cờ để xem lại.
+    """
+    for g, nxt in zip(groups, groups[1:]):
+        if (g["exam"], g["section"]) != (nxt["exam"], nxt["section"]):
+            continue
+        if GEOM_RE.search(_text_of(g["els"])) or not GEOM_RE.search(_text_of(nxt["els"])):
+            continue
+        target = next((e for e in nxt["els"] if _local(e) == "p"), None)
+        if target is None:
+            continue
+        runs = []
+        for e in g["els"]:
+            for a in e.iter(q("wp", "anchor")):
+                r = a
+                while r is not None and r.tag != q("w", "r"):
+                    r = r.getparent()
+                if r is not None and r not in runs:
+                    runs.append(r)
+        for i, r in enumerate(runs):
+            r.getparent().remove(r)
+            ppr = target.find(q("w", "pPr"))
+            target.insert((list(target).index(ppr) + 1 if ppr is not None else 0) + i, r)
+        if runs:
+            nxt["moved"] = True
+
+
 # ------------------------------------------------------------------ điểm vào chính
 
 
@@ -344,6 +388,8 @@ def parse_document(pkg: DocxPackage) -> ParsedDocument:
     counter = 0
     current: list = []  # các phần tử XML của câu đang gom
 
+    groups: list[dict] = []
+
     def flush():
         nonlocal current, counter
         if not current:
@@ -354,22 +400,25 @@ def parse_document(pkg: DocxPackage) -> ParsedDocument:
                 els[-1].find(".//" + q("w", "drawing")) is None and els[-1].find(".//" + q("w", "object")) is None:
             els.pop()
         counter += 1
+        groups.append({"exam": exam, "section": section, "number": counter, "els": els})
+
+    def build(g: dict) -> ParsedQuestion:
+        els = g["els"]
         blocks = [b for b in (_block(e, ctx) for e in els) if b]
         _strip_question_marker(blocks)
         content, qtype = _build_content(blocks)
-        stem_text = para_text(els[0])
-        pm = POINTS_RE.search(stem_text)
+        pm = POINTS_RE.search(para_text(els[0]))
         rel_ids = {
             v for e in els for node in e.iter() if isinstance(node.tag, str)
             for k, v in node.attrib.items() if k.startswith("{%s}" % NS["r"])
         }
-        questions.append(ParsedQuestion(
-            exam=exam, section=section, number=counter, qtype=qtype,
+        return ParsedQuestion(
+            exam=g["exam"], section=g["section"], number=g["number"], qtype=qtype,
             points=float(pm.group(1).replace(",", ".")) if pm else None,
             content=content,
             raw_ooxml="".join(etree.tostring(e, encoding="unicode") for e in els),
-            rel_ids=rel_ids,
-        ))
+            rel_ids=rel_ids, issues=[MOVED_FIGURE] if g.get("moved") else [],
+        )
 
     for el in body:
         name = _local(el)
@@ -396,5 +445,7 @@ def parse_document(pkg: DocxPackage) -> ParsedDocument:
         elif current:
             current.append(el)
     flush()
+    _relocate_figures(groups)
+    questions.extend(build(g) for g in groups)
 
     return ParsedDocument(questions, ctx.assets, ctx.ole_blobs, ctx.issues)

@@ -44,6 +44,13 @@ def test_duplicate_content_flagged_not_dropped(env):
         assert qs[0].duplicate_of is None and qs[1].duplicate_of == "C0000001"
 
 
+def test_cli_missing_file_is_clean_error(tmp_path, capsys):
+    from eduq.cli import main
+
+    rc = main(["--data", str(tmp_path / "d"), "import", str(tmp_path / "khong-co.docx"), "--topic", "T"])
+    assert rc == 1 and "Lỗi" in capsys.readouterr().err
+
+
 SAMPLE = os.environ.get("EDUQ_SAMPLE_DOCX")
 
 
@@ -54,7 +61,7 @@ def test_real_sample_bo_10_de(env):
     r = import_docx(SAMPLE, "Toán 7 - GK1", Session, store)
     assert (r.questions, r.multiple_choice, r.free_response) == (80, 40, 40)
     assert r.formulas_total == 397 and r.images == 10
-    assert r.formulas_needs_review == 0 and r.questions_needs_review == 0
+    assert r.formulas_needs_review == 0 and r.questions_needs_review == 6  # 6 câu có hình được chuyển câu
     with Session() as s:
         for q in s.scalars(select(Question)):
             assert q.qtype != "multiple_choice" or [o["label"] for o in q.content["options"]] == list("ABCD")

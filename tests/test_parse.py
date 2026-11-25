@@ -1,4 +1,4 @@
-from conftest import make_docx, p
+from conftest import PNG, make_docx, p, p_image
 
 from eduq.package import DocxError, DocxPackage
 from eduq.parse import parse_document
@@ -68,3 +68,54 @@ def test_invalid_docx_rejected():
     import pytest
     with pytest.raises(DocxError):
         DocxPackage(b"khong phai zip")
+
+
+def _imgs(question):
+    out = []
+    for b in question.content["stem"] + question.content.get("after", []):
+        out += [n for n in b.get("inlines", []) if n["type"] == "image"]
+    return out
+
+
+def parse_img(body):
+    return parse_document(DocxPackage(make_docx(body, None, {"rId7": PNG})))
+
+
+def test_floating_figure_moves_to_next_geometry_question():
+    # hình neo nhầm vào câu mua sắm, thuộc về câu hình học kế tiếp (cùng đề)
+    doc = parse_img(
+        p("ĐỀ SỐ 1") +
+        p_image("Câu 1. Bạn An mua sách giá 100 000 đồng.", "rId7", floating=True) +
+        p("Câu 2. Cho đường thẳng a cắt b tại A. Tính góc xOy.")
+    )
+    q1, q2 = doc.questions
+    assert not _imgs(q1) and len(_imgs(q2)) == 1
+    assert q2.issues == ["figure_moved_from_previous_question"] and q1.issues == []
+    assert "r:embed" in q2.raw_ooxml and q2.rel_ids == {"rId7"} and not q1.rel_ids  # raw + rels đi theo hình
+
+
+def test_figure_stays_when_not_ambiguous():
+    # câu hiện tại đã là hình học → giữ nguyên
+    doc = parse_img(p_image("Câu 1. Cho tam giác ABC có góc A = 60 độ.", "rId7", floating=True) + p("Câu 2. Cho góc xOy."))
+    assert len(_imgs(doc.questions[0])) == 1 and not doc.questions[0].issues
+    # câu kế tiếp không phải hình học → giữ nguyên
+    doc = parse_img(p_image("Câu 1. Tính 2+2.", "rId7", floating=True) + p("Câu 2. Tính 3+3."))
+    assert len(_imgs(doc.questions[0])) == 1
+    # hình nằm cùng dòng (inline) không bao giờ bị chuyển
+    doc = parse_img(p_image("Câu 1. Tính 2+2.", "rId7") + p("Câu 2. Cho đường thẳng a cắt b."))
+    assert len(_imgs(doc.questions[0])) == 1
+    # không chuyển qua ranh giới đề
+    doc = parse_img(p_image("Câu 1. Tính.", "rId7", floating=True) + p("ĐỀ SỐ 2") + p("Câu 1. Cho góc xOy."))
+    assert len(_imgs(doc.questions[0])) == 1
+
+
+def test_image_crop_is_kept_and_rendered():
+    from eduq.render import question_html
+
+    doc = parse_img(p_image("Câu 1. Có hình bị cắt", "rId7", crop_top=25000))
+    img = _imgs(doc.questions[0])[0]
+    assert img["crop"] == {"t": 25000}
+    html = question_html(doc.questions[0].content, lambda sha: f"a/{sha}")
+    # ảnh đầy đủ cao 100/75 lần khung (100px → 133.3px) và lệch lên 25% chiều cao ảnh đầy đủ
+    assert "overflow" not in html and 'class="pic crop"' in html
+    assert "height:133.3px" in html and "top:-33.3px" in html

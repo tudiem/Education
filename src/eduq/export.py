@@ -602,7 +602,7 @@ def export_pdf(questions: list[Question], session, store: AssetStore, out_path: 
         _pdf_chrome(questions, session, store, out_path, title, (wt / 1440, ht / 1440))
         for qu in questions:
             if qu.status != "ok":
-                warnings.append(f"{qu.code}: có công thức cần review, PDF có thể thiếu/sai phần đó")
+                warnings.append(f"{qu.code}: cần review ({'; '.join(qu.issues) or qu.status}); xem `eduq list --status needs_review`")
     elif engine == "libreoffice":
         with tempfile.TemporaryDirectory() as td:
             tpl, w = template_for(session, store, questions)
